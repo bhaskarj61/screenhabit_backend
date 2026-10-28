@@ -1,3 +1,4 @@
+import { privacyRoutes } from "./modules/privacy.js";
 import { planRoutes } from "./modules/plans.js";
 import Fastify, { LogController, type FastifyError } from "fastify";
 import rateLimit from "@fastify/rate-limit";
@@ -72,6 +73,7 @@ export async function buildApp(
       return reply.code(503).send({ status: "not_ready" });
     }
   });
+  privacyRoutes(app);
   configurationRoutes(app, repository);
   feedbackRoutes(app, repository);
   planRoutes(app, repository);
