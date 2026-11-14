@@ -1,75 +1,59 @@
-# Deploying ScreenHabit backend
+# ScreenHabit production backend
 
-## What you need
+The API is a stateless Node 24 service with a separate PostgreSQL database. Usage events and app names remain on the phone; the API stores only feedback and serves configuration and starter plans. Production resources are isolated from the existing beta service and database.
 
-1. A GitHub/GitLab repository containing this folder (no node_modules, .env or secrets).
-2. A hosting account that runs Node 24 or Docker. Render is one documented option below.
-3. A PostgreSQL database with credentials, backups, and a region chosen for your users and privacy requirements.
-4. A hosting budget for an API instance and database. Check current provider pricing; this project does not assume permanent free production hosting.
-5. HTTPS. A provider hostname is enough for CUG; a custom domain such as api.your-domain.com is optional.
-6. Before mobile integration: updated privacy disclosures covering submitted feedback, host logging, retention and deletion/contact handling. Existing on-device-only claims must be revised where data is transmitted.
+## Render setup
 
-No AI key or Play Billing credential is needed for the implemented endpoints.
+`render.yaml` defines a Singapore web service and a separate managed PostgreSQL database. It uses paid plans, turns off automatic production deploys, keeps the database off the public network, runs schema migrations before each deploy, and checks `/health/ready`. Review Render's current pricing before syncing the Blueprint; the service and database are billable resources.
 
-## Option A: Render Node service + managed PostgreSQL
+1. In Render, choose **New → Blueprint** and connect `https://github.com/bhaskarj61/screenhabit_backend` on the `main` branch. Select `render.yaml` at the repository root.
+2. Review the resources and monthly prices shown by Render. Syncing creates a new `screenhabit-api-prod` service and `screenhabit-prod-db`; it does not reuse the beta database.
+3. When prompted for `DATABASE_URL`, provide a connection URL for the runtime role using the **internal** host, port, and database shown by the new database. Choose a distinct role name (for example `screenhabit_runtime`) and a long random password. URL-encode special characters in the username/password. It is safe to enter this value in Render; never commit it.
+4. Render supplies the owner URL separately as `MIGRATION_DATABASE_URL`. The pre-deploy step applies migrations, then creates/resets the runtime role from the credentials in `DATABASE_URL` and grants only the access the API needs. The start command removes `MIGRATION_DATABASE_URL` before launching Node, so the running API process does not receive the database-owner credential.
+5. Wait for the first deploy to finish and confirm the service is **Live**. Keep auto-deploy off for production; review changes and deploy deliberately.
 
-Official references: [Node deployment](https://render.com/docs/deploy-node-express-app), [deploy lifecycle](https://render.com/docs/deploys), [PostgreSQL connections](https://render.com/docs/postgresql-creating-connecting).
+Required production environment is declared in the Blueprint. `TRUST_PROXY_HOPS=1` uses the single Render ingress proxy for client IP rate limiting. The database uses Render's internal connection on the private network, so `DATABASE_SSL=false`; do not substitute the public database URL.
 
-1. Push this backend as its own repository, or select `outputs/screenhabit-backend` as the root directory when deploying the whole workspace.
-2. Create a managed PostgreSQL database and a Node web service in the same region. Use the database's internal connection URL when available.
-3. Configure the web service:
+## Verify the service
 
-   | Setting            | Value                                           |
-   | ------------------ | ----------------------------------------------- |
-   | Build command      | `npm ci --include=dev && npm run build`         |
-   | Pre-deploy command | `npm run migrate:prod`                          |
-   | Start command      | `npm start`                                     |
-   | Health check path  | `/health/ready`                                 |
-   | Node               | 24 (also enforced through package.json engines) |
+Run these from a terminal after Render gives the service its HTTPS URL:
 
-   Render pre-deploy commands require an eligible paid service. If your plan lacks this, run migrations as a controlled one-off job with database network access **before** starting the new version. Do not put migration credentials into a frontend or APK.
-
-4. Set environment variables in the hosting dashboard:
-
-   - `DATABASE_URL`: private database connection URL.
-   - `NODE_ENV=production`
-   - `HOST=0.0.0.0`
-   - `LOG_LEVEL=info`
-   - `DATABASE_SSL`: follow your provider's connection requirements. Set `true` for TLS with certificate verification; supply `DATABASE_CA_FILE` if a private CA is required. The application does not disable certificate verification. Provider internal connections may have different TLS requirements from public connections.
-   - `TRUST_PROXY_HOPS`: keep `0` unless you have verified your hosting proxy chain. Set `1` only when exactly one trusted proxy fronts the app and direct client access is prevented. A wrong value can break rate limits or allow IP spoofing.
-   - `PORT`: use the provider-supplied value; the app defaults to 3000 locally.
-
-5. Deploy. Verify `/health/live`, `/health/ready`, `/v1/config`, and one feedback POST over the issued HTTPS URL. Confirm a row appears in `feedback` using your database console.
-6. Only after verification, configure the mobile app's API URL and add an explicit user-triggered feedback submission flow. Local app integration exists. Staging and production require an environment-specific build pointed at a real HTTPS service; the app sends feedback only after an explicit user action and consent.
-
-## Option B: any Docker host
-
-Build the included Dockerfile, configure the same environment variables, run `node dist/migrate.js` as a one-off container with database connectivity, then start the normal container. The runtime uses a non-root user. Put it behind a managed HTTPS load balancer or reverse proxy. Keep the database off the public network. Supply secrets through your hosting platform, not image layers.
-
-## Manage configuration
-
-There are deliberately no public admin write endpoints. Use a restricted database console until an authenticated admin tool is built.
-
-```sql
-UPDATE app_config
-SET latest_version_code = 17,
-    update_message = 'A newer version of ScreenHabit is available.',
-    updated_at = now()
-WHERE id = 1;
+```sh
+curl -fsS https://YOUR-PROD-HOST/health/live
+curl -fsS https://YOUR-PROD-HOST/health/ready
+curl -fsS https://YOUR-PROD-HOST/v1/config
+curl -fsS https://YOUR-PROD-HOST/v1/plans
 ```
 
-`minimum_version_code` is information for a future mobile update flow; the current APK does not consume it. Raising it does not repair an app or silently force an update. Do not set minimum versions above a version customers can actually install.
+`/health/ready` must return `{"status":"ready"}`. Confirm logs contain route/status/duration and feedback receipt IDs only; never send real personal information in a smoke-test feedback message. Review database backups, retention, and recovery before inviting a broad audience.
+
+## Before connecting a production app build
+
+- Change the mobile production API and privacy-policy links from `screenhabit-beta-api.onrender.com` to the verified production hostname. The current mobile production configuration still points to the **beta** API.
+- Build and install a new production-signed AAB with a version code higher than the currently uploaded Play build. The current source candidate is versionCode 34; migration `004_current_app_version.sql` makes the API's latest-version value at least 34 without lowering operator settings.
+- Do not raise `minimum_version_code` until the replacement build is available to every affected user in Play. The current migration intentionally leaves it unchanged.
+- Confirm the public privacy policy matches what the app actually transmits and how long submitted feedback is retained. The in-app policy endpoint is `/privacy`.
 
 ## Production operations
 
-- Separate staging and production databases and credentials.
-- Use a migration role for schema changes and a runtime role limited to `SELECT` on `app_config` and `SELECT, INSERT` on `feedback`; runtime needs no DDL or configuration writes. Apply least-privilege grants through your database administrator/provider.
-- Enable automated backups, set retention explicitly, and perform a restore drill. Decide feedback retention and run a scheduled deletion job; no retention scheduler is implemented here.
-- Monitor availability, readiness failures, latency, database connections and storage. This app avoids logging request bodies, tokens, IPs and feedback text; hosting access logs may still contain metadata and need their own policy.
-- Protect anonymous write endpoints with an edge/WAF rate limit before broad campaigns. In-memory application limits are only a first layer; replica-wide limits need a shared store or gateway.
-- Add authentication and ownership checks before accounts, cloud sync, AI quotas, subscriptions or any per-user history endpoint. Keep future AI/provider/service-role secrets server-side.
-- For scaling, add stateless API replicas within the DB connection budget. Add a shared rate-limit store when running multiple replicas. Put AI and lengthy reports behind durable background jobs when implemented. Do not upload raw foreground events just to support these endpoints.
+- Inspect Render web logs and Postgres metrics regularly. Set alerting for failed deploys, readiness failures, database storage, and connection saturation.
+- Render provides managed backups for paid PostgreSQL plans. Verify the retention window for the selected plan and practice restoring to a separate database before storing important data.
+- The API's rate limits are per process. Keep one web instance for this small service; if you scale to multiple instances, add a shared rate-limit store or edge protection before relying on those limits for abuse control.
+- Feedback is anonymous and limited to five submissions per client IP per minute. Current application logs exclude message bodies, raw URLs, and client IPs. Hosting infrastructure may separately retain operational logs.
+- Deletion requests for submitted feedback need to be handled by an authorized operator in the database. No authenticated admin or automatic retention job exists yet; define and document a retention period before production feedback collection.
+- There are no accounts, cloud sync, raw usage-event uploads, ads, subscription endpoints, or AI calls in this backend. Add authentication and per-user authorization before implementing any user-specific server data.
 
-## Verification in this workspace
+## Manual deployment fallback
 
-The TypeScript build and API tests can be run without a database server. API tests exercise validation, error redaction, health behavior and throttling. A PGlite test executes the actual initial SQL migration and parameterized feedback persistence. This does not establish networked PostgreSQL connectivity or Docker runtime success. Run the Docker quick start and a migration/restart/feedback smoke test in your deployment environment before connecting customers.
+If you are not using the Blueprint, configure the web service with:
+
+| Setting | Value |
+| --- | --- |
+| Runtime | Node 24 |
+| Build command | `npm ci --include=dev && npm run build` |
+| Pre-deploy command | `npm run migrate:prod && npm run grant:prod` |
+| Start command | `sh -c 'unset MIGRATION_DATABASE_URL; exec npm start'` |
+| Health check | `/health/ready` |
+| Region | Singapore, same as the production database |
+
+Set `DATABASE_URL` to the runtime-role internal URL and `MIGRATION_DATABASE_URL` to the database-owner internal URL. Never put either credential in the app, APK, Git, or build output.

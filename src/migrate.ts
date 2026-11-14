@@ -1,7 +1,12 @@
 import pg from "pg";
 import { readdir, readFile } from "node:fs/promises";
 import { settings } from "./config.js";
-const config = settings();
+// Schema changes use the database owner credential. The web process uses the
+// separate, restricted DATABASE_URL and strips this variable before startup.
+const config = settings({
+  ...process.env,
+  DATABASE_URL: process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL,
+});
 const client = new pg.Client({
   connectionString: config.databaseUrl,
   ssl: config.ssl,

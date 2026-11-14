@@ -11,6 +11,7 @@ export async function buildApp(
     logger?: boolean;
     logLevel?: string;
     trustProxy?: number;
+    production?: boolean;
     logStream?: { write(message: string): void };
   } = {},
 ) {
@@ -42,6 +43,15 @@ export async function buildApp(
   });
   app.addHook("onSend", async (_request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    reply.header(
+      "Content-Security-Policy",
+      "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+    );
+    if (options.production)
+      reply.header("Strict-Transport-Security", "max-age=31536000");
     if (!reply.hasHeader("Cache-Control"))
       reply.header("Cache-Control", "no-store");
   });

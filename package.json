@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "migrate": "node --env-file=.env --import=tsx src/migrate.ts",
     "migrate:prod": "node dist/migrate.js",
+    "grant:prod": "node dist/grant-runtime-role.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "local": "tsx src/local.ts",

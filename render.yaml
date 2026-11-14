@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: screenhabit-api-prod
+    runtime: node
+    region: singapore
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci --include=dev && npm run build
+    preDeployCommand: npm run migrate:prod && npm run grant:prod
+    startCommand: sh -c 'unset MIGRATION_DATABASE_URL; exec npm start'
+    healthCheckPath: /health/ready
+    autoDeployTrigger: off
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: DATABASE_SSL
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        fromDatabase:
+          name: screenhabit-prod-db
+          property: connectionString
+
+databases:
+  - name: screenhabit-prod-db
+    databaseName: screenhabit_prod
+    user: screenhabit_owner
+    region: singapore
+    plan: 0.1c-256mb
+    postgresMajorVersion: "18"
+    ipAllowList: []

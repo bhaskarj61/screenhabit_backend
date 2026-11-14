@@ -14,6 +14,7 @@ const pool = new pg.Pool({
 const app = await buildApp(postgresRepository(pool), {
   logLevel: config.logLevel,
   trustProxy: config.trustProxy,
+  production: process.env.NODE_ENV === "production",
 });
 pool.on("error", () => app.log.error("Idle database connection failed"));
 app.addHook("onClose", async () => {
