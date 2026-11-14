@@ -1,10 +1,14 @@
-# ScreenHabit production backend
+# ScreenHabit backend deployment
 
 The API is a stateless Node 24 service with a separate PostgreSQL database. Usage events and app names remain on the phone; the API stores only feedback and serves configuration and starter plans. Production resources are isolated from the existing beta service and database.
 
-## Render setup
+## Current no-cost validation phase
 
-`render.yaml` defines a Singapore web service and a separate managed PostgreSQL database. It uses paid plans, turns off automatic production deploys, keeps the database off the public network, runs schema migrations before each deploy, and checks `/health/ready`. Review Render's current pricing before syncing the Blueprint; the service and database are billable resources.
+Use the existing free `screenhabit-beta-api` service and `screenhabit-beta-db`; do not sync the production Blueprint below during this phase. The service can spin down and cause a cold start. Render currently shows the free database expiring on **November 27, 2026**; Render will delete it unless it is upgraded. Export any feedback you need to keep before that date. Treat this setup as temporary validation infrastructure, not durable production storage. The mobile production API URL currently points to this existing beta service.
+
+## Future paid production setup
+
+`render.yaml` defines a Singapore web service and a separate managed PostgreSQL database. It uses paid plans, turns off automatic production deploys, keeps the database off the public network, runs schema migrations before each deploy, and checks `/health/ready`. This is for after Play acceptance and user validation. Review Render's current pricing before syncing the Blueprint; the service and database are billable resources.
 
 1. In Render, choose **New → Blueprint** and connect `https://github.com/bhaskarj61/screenhabit_backend` on the `main` branch. Select `render.yaml` at the repository root.
 2. Review the resources and monthly prices shown by Render. Syncing creates a new `screenhabit-api-prod` service and `screenhabit-prod-db`; it does not reuse the beta database.

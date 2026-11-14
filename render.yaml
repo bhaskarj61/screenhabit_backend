@@ -1,3 +1,4 @@
+# FUTURE PAID PRODUCTION ONLY. Do not sync this Blueprint during free validation.
 services:
   - type: web
     name: screenhabit-api-prod
